@@ -1,37 +1,74 @@
-# Chess Personality Project
+# Chess Personality Indexer
 
-A chess stylometry system that analyzes playing styles and matches players to historical chess masters.
+A chess stylometry system that maps player games to historical Grandmasters using a machine-learned latent space.
 
-## Overview
-This project implements the chess stylometry research from the papers in `papers/`. We build a system that:
-- Parses PGN files and extracts chess games
-- Uses CNN + Transformer architecture to create player embeddings
-- Compares uploaded games against historical chess masters
-- Provides personality matching results via web interface
+## Architecture & Design Decisions
 
-Note: We focus on stylometry/player comparisons only (not the Maia-2 engine extensions).
+### 1. Data Representation & POV Normalization
+- **Strict 18-Channel Grid:** Each board state is encoded as a strict $18 \times 8 \times 8$ tensor:
+  - Channels 0–5: Player piece types (P, N, B, R, Q, K).
+  - Channels 6–11: Opponent piece types (P, N, B, R, Q, K).
+  - Channels 12–15: Castling rights (player kingside/queenside, opponent kingside/queenside).
+  - Channel 16: Active turn (1 if target's turn, 0 otherwise).
+  - Channel 17: En Passant square (1 on the target square, 0 elsewhere).
+- **POV Invariance:** If the target player plays Black, the board is vertically flipped (`np.flipud`), and the player/opponent piece and castling channels are swapped. Pawns always advance in the same tensor direction (row 6 to row 0).
+- **Sequence Processing:** Game sequences are standardized to the first 64 states ($L=64$). Shorter sequences are zero-padded and handled via key-padding masks; longer sequences are truncated.
 
-## Environment
-- Use `uv` for Python environment management
-- Run tests with: `uv run pytest`
+### 2. Model Architecture
+- **Spatial Front-End (CNN):** Processes each $18 \times 8 \times 8$ state using ResNet blocks and outputs a $128$-dimensional embedding via Global Average Pooling.
+- **Sequential Back-End (Transformer):** Aggregates the sequence of $L$ states. A learnable `[CLS]` token is prepended to the sequence, and its final hidden state represents the entire game ($\mathbf{z} \in \mathbb{R}^{128}$).
 
-## Architecture
-- Backend: FastAPI with SQLite database
-- ML Pipeline: CNN feature extraction � Transformer aggregation � Player embeddings
-- Frontend: Vanilla HTML/CSS/JS
-- Processing: Async job queue for analysis tasks
+### 3. Two-Phase Training Objective
+- **Phase 1: Joint Embedding Predictive Architecture (JEPA):** Pre-trains the encoder self-supervised by predicting the latent representations of masked moves from surrounding context.
+  - *EMA Target:* Target encoder parameters are updated via a cosine schedule (EMA $\beta_t$ from $0.996$ to $1.0$).
+  - *Dynamic Masking:* Latent mask window size is dynamically scaled based on game length: $W = \text{clip}(\text{int}(0.15 \times N_{actual}), 5, 10)$.
+- **Phase 2: Supervised Contrastive Learning (SupCon):** Fine-tunes the network using 22 Grandmaster identities as labels.
+  - The CNN and first 2 Transformer layers are frozen.
+  - The `[CLS]` token is projected to the unit sphere using a 2-layer MLP projection head and optimized with SupCon loss ($\tau=0.07$).
 
+---
 
-## TODO:
+## Execution Guide
 
-- Implement vectorization for moves
-  - 2 FEN go in (before/after), 1 vector comes out
-  - 8x8x17
-    - First 12 channels: one 8x8 for each piece color/type
-      - zeroes(), 1 for each position holding that piece
-    - Next 4 channels: all ones() if player can castle
-      - White kingside, white queenside, black kingside, black queenside
-    - Last channel: all ones() if player to move is white
-  - One "move" is a tuple of two position vectors (before/after)
-- Create PGN cleanser to remove games with <10 turns, insufficient metadata, etc.
+### Prerequisites
+Manage dependencies using `uv`:
+```bash
+# Set up environment and install dependencies
+uv sync
+```
 
+### 1. Preprocessing
+PGN parsing is executed out-of-loop to prevent disk bottlenecks. To parse raw PGNs from `concat_master_games/` and write pre-computed tensors to disk:
+```bash
+uv run python preprocess_games.py --pgn_dir concat_master_games --out_dir preprocessed_data
+```
+
+### 2. Phase 1: JEPA Pre-training
+Run self-supervised pre-training:
+```bash
+uv run python train_phase1.py --data_dir preprocessed_data --save_dir checkpoints --epochs 5 --batch_size 4096
+```
+
+### 3. Phase 2: SupCon Fine-tuning
+Run contrastive fine-tuning using the checkpoint from Phase 1:
+```bash
+uv run python train_phase2.py --data_dir preprocessed_data --checkpoint checkpoints/jepa_best.pt --save_dir checkpoints --epochs 5 --batch_size 4096
+```
+
+### 4. Running the Local Demo & Inference
+Evaluate any user PGN file and match playing style to the 22 Grandmasters:
+```bash
+uv run python demo.py --pgn test.pgn --player "JamesElia"
+```
+
+### 5. Held-out Validation Benchmark
+Evaluate the model against 1,675 held-out games (100 games held out for masters with >2,000 games; 25 for masters with ≤2,000 games) to calculate Top-1, Top-3, Top-5 retrieval accuracy and Mean Reciprocal Rank (MRR):
+```bash
+uv run python demo.py --validate
+```
+
+### 6. Running Unit Tests
+Validate the pipeline, models, and optimization logic:
+```bash
+PYTHONPATH=. uv run pytest
+```

@@ -1,3 +1,19 @@
-parsed_master_games/
-.vscode/
+# Virtual environments & caches
+.venv/
 __pycache__/
+.pytest_cache/
+*.py[cod]
+
+# System & IDE files
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+
+# Large datasets & preprocessed files
+preprocessed_data/
+parsed_master_games/
+
+# Model checkpoints & weights
+checkpoints/
+*.pt

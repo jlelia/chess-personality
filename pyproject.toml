@@ -7,10 +7,12 @@ requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.3.3",
     "python-chess>=1.999",
+    "torch>=2.13.0",
 ]
 
 [dependency-groups]
 dev = [
     "black>=25.9.0",
     "ipython>=9.5.0",
+    "pytest>=9.1.1",
 ]
