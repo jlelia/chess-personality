@@ -1,0 +1,10 @@
+.git
+.venv
+__pycache__
+*.pyc
+preprocessed_data
+parsed_master_games
+concat_master_games
+checkpoints
+checkpoints_v1
+.DS_Store
