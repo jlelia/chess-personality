@@ -272,7 +272,35 @@ def run_validation_benchmark(checkpoint_path: str = "checkpoints/supcon_best.pt"
     _, test_dataset = get_stratified_train_test_datasets(data_dir, seed=42)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=False, num_workers=0)
 
+    # Centering: subtract global baseline to isolate pure stylistic variance
+    mu = centroids.mean(dim=0, keepdim=True)
+    c_centered = F.normalize(centroids - mu, p=2, dim=-1)
+
+    all_embs = []
+    all_labels = []
+
+    with torch.no_grad():
+        for batch in test_loader:
+            boards = batch["boards"].to(device)
+            padding_mask = batch["padding_mask"].to(device)
+            labels = batch["player_label"]
+
+            out = encoder(boards, padding_mask=padding_mask)
+            z_cls = out[:, 0]
+            z_proj = projection_head(z_cls)
+            z_proj_centered = F.normalize(z_proj - mu, p=2, dim=-1)
+
+            all_embs.append(z_proj_centered.cpu())
+            all_labels.append(labels.cpu())
+
+    all_embs = torch.cat(all_embs, dim=0) # (1675, 128)
+    all_labels = torch.cat(all_labels, dim=0) # (1675,)
+
     total_games = len(test_dataset)
+
+    # 1-Game Metrics
+    sim_matrix = torch.matmul(all_embs, c_centered.cpu().T).numpy() # (1675, 22)
+
     top1_correct = 0
     top3_correct = 0
     top5_correct = 0
@@ -282,58 +310,74 @@ def run_validation_benchmark(checkpoint_path: str = "checkpoints/supcon_best.pt"
     per_gm_top1 = {gm: 0 for gm in GRANDMASTERS}
     per_gm_top3 = {gm: 0 for gm in GRANDMASTERS}
 
-    # Centering: subtract global baseline to isolate pure stylistic variance
-    mu = centroids.mean(dim=0, keepdim=True)
-    c_centered = F.normalize(centroids - mu, p=2, dim=-1)
+    # Group embeddings by master for profile evaluations
+    embs_by_gm = {idx: [] for idx in range(len(GRANDMASTERS))}
 
-    with torch.no_grad():
-        for batch in test_loader:
-            boards = batch["boards"].to(device)
-            padding_mask = batch["padding_mask"].to(device)
-            labels = batch["player_label"].cpu().numpy()
+    for i in range(total_games):
+        true_label = all_labels[i].item()
+        true_gm = GRANDMASTERS[true_label]
+        embs_by_gm[true_label].append(all_embs[i])
 
-            out = encoder(boards, padding_mask=padding_mask)
-            z_cls = out[:, 0]
-            z_proj = projection_head(z_cls)
-            z_proj_centered = F.normalize(z_proj - mu, p=2, dim=-1)
+        sims = sim_matrix[i]
+        ranked_indices = np.argsort(-sims)
 
-            # Cosine similarity matrix: (B, 22)
-            sim_matrix = torch.matmul(z_proj_centered, c_centered.T).cpu().numpy()
+        per_gm_total[true_gm] += 1
+        rank = np.where(ranked_indices == true_label)[0][0] + 1
+        mrr_sum += 1.0 / rank
 
-            for i in range(len(labels)):
-                true_label = labels[i]
-                true_gm = GRANDMASTERS[true_label]
-                sims = sim_matrix[i]
-                ranked_indices = np.argsort(-sims)
+        if rank == 1:
+            top1_correct += 1
+            per_gm_top1[true_gm] += 1
+        if rank <= 3:
+            top3_correct += 1
+            per_gm_top3[true_gm] += 1
+        if rank <= 5:
+            top5_correct += 1
 
-                per_gm_total[true_gm] += 1
+    top1_1g = (top1_correct / total_games) * 100.0
+    top3_1g = (top3_correct / total_games) * 100.0
+    top5_1g = (top5_correct / total_games) * 100.0
+    mrr_1g = (mrr_sum / total_games)
 
-                rank = np.where(ranked_indices == true_label)[0][0] + 1 # 1-indexed
-                mrr_sum += 1.0 / rank
+    # Multi-Game Profile Evaluations (3 Games, 10 Games)
+    import random
+    rng = random.Random(42)
 
-                if rank == 1:
-                    top1_correct += 1
-                    per_gm_top1[true_gm] += 1
-                if rank <= 3:
-                    top3_correct += 1
-                    per_gm_top3[true_gm] += 1
-                if rank <= 5:
-                    top5_correct += 1
+    def eval_profile(n_games: int, num_trials_per_gm: int = 50):
+        t1, t3, t5, mrr_s, n_trials = 0, 0, 0, 0.0, 0
+        c_cpu = c_centered.cpu()
+        for gm_idx, game_list in embs_by_gm.items():
+            if len(game_list) < n_games:
+                continue
+            for _ in range(num_trials_per_gm):
+                chosen = rng.sample(game_list, n_games)
+                profile = torch.stack(chosen).mean(dim=0, keepdim=True)
+                profile = F.normalize(profile, p=2, dim=-1)
+                sims = torch.matmul(c_cpu, profile.T).squeeze().numpy()
+                ranks = np.argsort(-sims)
+                r = np.where(ranks == gm_idx)[0][0] + 1
+                mrr_s += 1.0 / r
+                if r == 1: t1 += 1
+                if r <= 3: t3 += 1
+                if r <= 5: t5 += 1
+                n_trials += 1
+        return (t1 / n_trials * 100.0), (t3 / n_trials * 100.0), (t5 / n_trials * 100.0), (mrr_s / n_trials)
 
-    top1_acc = (top1_correct / total_games) * 100.0
-    top3_acc = (top3_correct / total_games) * 100.0
-    top5_acc = (top5_correct / total_games) * 100.0
-    mrr = (mrr_sum / total_games)
+    top1_3g, top3_3g, top5_3g, mrr_3g = eval_profile(3)
+    top1_10g, top3_10g, top5_10g, mrr_10g = eval_profile(10)
 
     print("\n" + "=" * 70)
-    print("       HELD-OUT VALIDATION SET BENCHMARK (1,675 TEST GAMES)       ")
+    print("      STANDARD HELD-OUT RETRIEVAL BENCHMARK (1,675 TEST GAMES)      ")
     print("=" * 70)
-    print(f"Total Test Games:     {total_games}")
     print(f"Random Baseline Top-1: {100.0 / 22:.2f}%")
-    print(f"Top-1 Retrieval Acc:   {top1_acc:.2f}%")
-    print(f"Top-3 Retrieval Acc:   {top3_acc:.2f}%")
-    print(f"Top-5 Retrieval Acc:   {top5_acc:.2f}%")
-    print(f"Mean Reciprocal Rank:  {mrr:.4f}")
+    print("-" * 70)
+    print(f"{'Profile Size':<20} {'Top-1 Acc':<14} {'Top-3 Acc':<14} {'Top-5 Acc':<14} {'MRR'}")
+    print("-" * 70)
+    print(f"{'1 Game (Single)':<20} {top1_1g:>8.2f}%     {top3_1g:>8.2f}%     {top5_1g:>8.2f}%     {mrr_1g:.4f}")
+    print(f"{'3 Games (Profile)':<20} {top1_3g:>8.2f}%     {top3_3g:>8.2f}%     {top5_3g:>8.2f}%     {mrr_3g:.4f}")
+    print(f"{'10 Games (Profile)':<20} {top1_10g:>8.2f}%     {top3_10g:>8.2f}%     {top5_10g:>8.2f}%     {mrr_10g:.4f}")
+    print("-" * 70)
+    print("\nPER-GRANDMASTER BREAKDOWN (1-GAME SINGLE):")
     print("-" * 70)
     print(f"{'Grandmaster':<18} {'Test Games':<12} {'Top-1 Acc':<14} {'Top-3 Acc'}")
     print("-" * 70)

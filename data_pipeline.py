@@ -108,3 +108,42 @@ def get_train_val_datasets(data_dir: str | Path, val_split: float = 0.1, seed: i
 
     return train_dataset, val_dataset
 
+class BalancedBatchSampler(torch.utils.data.Sampler):
+    """Yields batches with P classes and K samples per class.
+    
+    Total batch size = P * K.
+    Guarantees every class in the batch has K - 1 positive pairs,
+    preventing class imbalance from collapsing contrastive gradients.
+    """
+    def __init__(self, labels: list[int] | torch.Tensor, p_classes: int = 22, k_samples: int = 12, num_batches: int = 250, seed: int = 42):
+        self.p_classes = p_classes
+        self.k_samples = k_samples
+        self.num_batches = num_batches
+        self.rng = random.Random(seed)
+
+        # Group indices by class
+        self.class_indices = {}
+        for idx, lbl in enumerate(labels):
+            lbl = int(lbl)
+            self.class_indices.setdefault(lbl, []).append(idx)
+
+        self.unique_classes = sorted(list(self.class_indices.keys()))
+        assert len(self.unique_classes) >= self.p_classes, f"Not enough classes: {len(self.unique_classes)} < {self.p_classes}"
+
+    def __iter__(self):
+        for _ in range(self.num_batches):
+            chosen_classes = self.rng.sample(self.unique_classes, self.p_classes)
+            batch = []
+            for c in chosen_classes:
+                indices = self.class_indices[c]
+                if len(indices) >= self.k_samples:
+                    batch.extend(self.rng.sample(indices, self.k_samples))
+                else:
+                    batch.extend(self.rng.choices(indices, k=self.k_samples))
+            self.rng.shuffle(batch)
+            yield batch
+
+    def __len__(self):
+        return self.num_batches
+
+

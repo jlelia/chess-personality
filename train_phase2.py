@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from pathlib import Path
 
-from data_pipeline import get_stratified_train_test_datasets, get_train_val_datasets
+from data_pipeline import get_stratified_train_test_datasets, get_train_val_datasets, BalancedBatchSampler
 from model import ChessEncoder, SupConProjectionHead
 from preprocess_games import GRANDMASTERS, GM_TO_LABEL
 
@@ -59,39 +59,44 @@ class SupConLoss(nn.Module):
         loss = -mean_log_prob_pos.mean()
         return loss
 
-def get_optimizer_params_phase2(encoder, projection_head, weight_decay):
-    decay = set()
-    no_decay = set()
+def get_optimizer_params_phase2(encoder, projection_head, classifier=None, weight_decay=0.01, lr=1e-3, unfreeze_cnn=False):
+    models = [("encoder", encoder), ("proj", projection_head)]
+    if classifier is not None:
+        models.append(("cls", classifier))
+        
+    decay_main = []
+    no_decay_main = []
+    decay_cnn = []
+    no_decay_cnn = []
     
-    for model_name, model in [("encoder", encoder), ("proj", projection_head)]:
+    for model_name, model in models:
         for pn, p in model.named_parameters():
             if not p.requires_grad:
                 continue
-            fpn = f"{model_name}.{pn}"
+            is_cnn = ("cnn" in pn)
+            is_no_decay = (pn.endswith('bias') or p.ndim < 2 or 'token' in pn or 'embedding' in pn)
             
-            # Exclude biases, 1D normalization params, and special token embeddings from decay
-            if pn.endswith('bias') or p.ndim < 2 or 'token' in pn or 'embedding' in pn:
-                no_decay.add(fpn)
+            if is_cnn:
+                if is_no_decay:
+                    no_decay_cnn.append(p)
+                else:
+                    decay_cnn.append(p)
             else:
-                decay.add(fpn)
-                
-    param_dict = {}
-    for model_name, model in [("encoder", encoder), ("proj", projection_head)]:
-        for pn, p in model.named_parameters():
-            if not p.requires_grad:
-                continue
-            fpn = f"{model_name}.{pn}"
-            param_dict[fpn] = p
-            
-    inter_params = decay & no_decay
-    union_params = decay | no_decay
-    assert len(inter_params) == 0, f"Intersection: {inter_params}"
-    assert len(param_dict.keys() - union_params) == 0, f"Missing: {param_dict.keys() - union_params}"
-    
+                if is_no_decay:
+                    no_decay_main.append(p)
+                else:
+                    decay_main.append(p)
+                    
     optim_groups = [
-        {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": weight_decay},
-        {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        {"params": decay_main, "weight_decay": weight_decay, "lr": lr, "lr_scale": 1.0},
+        {"params": no_decay_main, "weight_decay": 0.0, "lr": lr, "lr_scale": 1.0},
     ]
+    if unfreeze_cnn and (decay_cnn or no_decay_cnn):
+        cnn_lr = lr * 0.1
+        optim_groups.extend([
+            {"params": decay_cnn, "weight_decay": weight_decay, "lr": cnn_lr, "lr_scale": 0.1},
+            {"params": no_decay_cnn, "weight_decay": 0.0, "lr": cnn_lr, "lr_scale": 0.1},
+        ])
     return optim_groups
 
 def get_lr(step, total_steps, eta_max, warmup_ratio=0.1):
@@ -108,15 +113,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="preprocessed_data")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/jepa_best.pt")
-    parser.add_argument("--save_dir", type=str, default="checkpoints")
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--save_dir", type=str, default="checkpoints_v2")
+    parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--temp", type=float, default=0.07)
     parser.add_argument("--in_memory", action="store_true", help="Cache dataset tensors into RAM")
+    parser.add_argument("--balanced_sampler", action="store_true", help="Use PxK class-balanced sampler (22 GMs x 12 games = 264 batch)")
+    parser.add_argument("--hybrid_loss", action="store_true", help="Add cross-entropy classification loss to SupCon")
+    parser.add_argument("--unfreeze_cnn", action="store_true", help="Unfreeze CNN with lower learning rate")
     args = parser.parse_args()
+    
+    Path(args.save_dir).mkdir(exist_ok=True, parents=True)
     
     # Device selection (MPS, CUDA, or CPU)
     if torch.backends.mps.is_available():
@@ -130,14 +140,20 @@ def main():
     # Load dataset using stratified holdout
     train_dataset, val_dataset = get_stratified_train_test_datasets(args.data_dir, seed=42, in_memory=args.in_memory)
     
-    # Support gradient accumulation
-    target_batch_size = args.batch_size
-    physical_batch_size = min(256, target_batch_size)
-    accum_steps = max(1, target_batch_size // physical_batch_size)
-    print(f"Target Batch Size: {target_batch_size}, Physical Batch Size: {physical_batch_size}, Accumulation Steps: {accum_steps}")
-    
-    train_loader = DataLoader(train_dataset, batch_size=physical_batch_size, shuffle=True, num_workers=args.num_workers, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=physical_batch_size, shuffle=False, num_workers=args.num_workers, drop_last=False)
+    if args.balanced_sampler:
+        print("Using BalancedBatchSampler (22 GMs x 12 games = 264 batch size)...")
+        train_labels = [GM_TO_LABEL[p.parent.name] for p in train_dataset.file_paths]
+        batch_sampler = BalancedBatchSampler(train_labels, p_classes=22, k_samples=12, num_batches=250, seed=42)
+        train_loader = DataLoader(train_dataset, batch_sampler=batch_sampler, num_workers=args.num_workers)
+        accum_steps = 1
+    else:
+        target_batch_size = args.batch_size
+        physical_batch_size = min(256, target_batch_size)
+        accum_steps = max(1, target_batch_size // physical_batch_size)
+        print(f"Target Batch Size: {target_batch_size}, Physical Batch Size: {physical_batch_size}, Accumulation Steps: {accum_steps}")
+        train_loader = DataLoader(train_dataset, batch_size=physical_batch_size, shuffle=True, num_workers=args.num_workers, drop_last=True)
+        
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=args.num_workers, drop_last=False)
     
     # Initialize encoder
     encoder = ChessEncoder().to(device)
@@ -150,10 +166,15 @@ def main():
     else:
         print(f"Warning: Pre-trained checkpoint '{args.checkpoint}' not found. Training from scratch.")
         
-    # Freezing: CNN front-end and first 2 layers of the Transformer encoder
-    for p in encoder.cnn.parameters():
-        p.requires_grad = False
-        
+    # Freezing configuration
+    if args.unfreeze_cnn:
+        print("Unfreezing CNN front-end with differential learning rate (0.1x)...")
+        for p in encoder.cnn.parameters():
+            p.requires_grad = True
+    else:
+        for p in encoder.cnn.parameters():
+            p.requires_grad = False
+            
     for layer_idx, layer in enumerate(encoder.transformer.layers):
         if layer_idx < 2:
             for p in layer.parameters():
@@ -162,17 +183,19 @@ def main():
             for p in layer.parameters():
                 p.requires_grad = True
                 
-    # Initialize projection head
+    # Initialize projection head and optional classifier
     projection_head = SupConProjectionHead().to(device)
-    
+    classifier = nn.Linear(128, len(GRANDMASTERS)).to(device) if args.hybrid_loss else None
+    if classifier is not None:
+        print("Using Hybrid Loss: SupCon + 0.5 * CrossEntropy...")
+        
     # Optimizer & Loss
-    optim_groups = get_optimizer_params_phase2(encoder, projection_head, args.weight_decay)
+    optim_groups = get_optimizer_params_phase2(
+        encoder, projection_head, classifier=classifier,
+        weight_decay=args.weight_decay, lr=args.lr, unfreeze_cnn=args.unfreeze_cnn
+    )
     optimizer = torch.optim.AdamW(optim_groups, lr=args.lr)
     criterion = SupConLoss(temperature=args.temp)
-    
-    # Mixed precision setup
-    autocast_device = "cuda" if device.type == "cuda" else ("cpu" if device.type == "cpu" else "mps")
-    scaler = torch.amp.GradScaler("cuda") if device.type == "cuda" else None
     
     total_steps = args.epochs * len(train_loader)
     print(f"Total training steps: {total_steps}")
@@ -183,60 +206,44 @@ def main():
     for epoch in range(1, args.epochs + 1):
         encoder.train()
         projection_head.train()
+        if classifier is not None:
+            classifier.train()
         train_loss = 0.0
         
         optimizer.zero_grad()
         
         for batch_idx, batch in enumerate(train_loader):
-            # Dynamic LR
             lr = get_lr(global_step, total_steps, args.lr)
             for g in optimizer.param_groups:
-                g['lr'] = lr
+                scale = g.get('lr_scale', 1.0)
+                g['lr'] = lr * scale
                 
             boards = batch["boards"].to(device)
             padding_mask = batch["padding_mask"].to(device)
             labels = batch["player_label"].to(device)
             
-            # Run forward pass (with AMP)
-            try:
-                with torch.amp.autocast(device_type=autocast_device, dtype=torch.bfloat16):
-                    # Pass full, unmasked sequence
-                    out = encoder(boards, padding_mask=padding_mask) # (B, 65, 128)
-                    
-                    # Extract CLS token representation (index 0)
-                    z_CLS = out[:, 0] # (B, 128)
-                    
-                    # Project to unit sphere
-                    z_proj = projection_head(z_CLS) # (B, 128)
-                    
-                    # Compute SupCon loss
-                    loss = criterion(z_proj, labels) / accum_steps
-            except Exception as e:
-                # Fallback to standard precision if AMP fails on this device
-                out = encoder(boards, padding_mask=padding_mask)
-                z_CLS = out[:, 0]
-                z_proj = projection_head(z_CLS)
-                loss = criterion(z_proj, labels) / accum_steps
-                
-            # Backward pass
-            if scaler is not None:
-                scaler.scale(loss).backward()
+            out = encoder(boards, padding_mask=padding_mask)
+            z_CLS = out[:, 0]
+            z_proj = projection_head(z_CLS)
+            
+            loss_supcon = criterion(z_proj, labels)
+            if classifier is not None:
+                logits = classifier(z_CLS)
+                loss_ce = F.cross_entropy(logits, labels)
+                loss = (loss_supcon + 0.5 * loss_ce) / accum_steps
             else:
-                loss.backward()
+                loss = loss_supcon / accum_steps
                 
+            loss.backward()
             train_loss += loss.item() * accum_steps
             
-            # Optimizer step after accumulation
             if (batch_idx + 1) % accum_steps == 0 or (batch_idx + 1) == len(train_loader):
-                if scaler is not None:
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    optimizer.step()
+                optimizer.step()
                 optimizer.zero_grad()
                 
             if (batch_idx + 1) % 50 == 0 or (batch_idx + 1) == len(train_loader):
-                print(f"  [Epoch {epoch:02d}/{args.epochs:02d}] Step {batch_idx+1:03d}/{len(train_loader):03d} | SupCon Batch Loss: {loss.item() * accum_steps:.6f} | LR: {lr:.6f}", flush=True)
+                loss_disp = loss.item() * accum_steps
+                print(f"  [Epoch {epoch:02d}/{args.epochs:02d}] Step {batch_idx+1:03d}/{len(train_loader):03d} | Batch Loss: {loss_disp:.6f} | LR: {lr:.6f}", flush=True)
 
             global_step += 1
             
@@ -245,6 +252,8 @@ def main():
         # Validation Phase
         encoder.eval()
         projection_head.eval()
+        if classifier is not None:
+            classifier.eval()
         val_loss = 0.0
         
         with torch.no_grad():
@@ -256,34 +265,36 @@ def main():
                 out = encoder(boards, padding_mask=padding_mask)
                 z_CLS = out[:, 0]
                 z_proj = projection_head(z_CLS)
+                
                 loss_batch = criterion(z_proj, labels)
+                if classifier is not None:
+                    logits = classifier(z_CLS)
+                    loss_batch += 0.5 * F.cross_entropy(logits, labels)
                 val_loss += loss_batch.item()
                 
         avg_val_loss = val_loss / len(val_loader)
         
         print(f"Epoch {epoch:02d}/{args.epochs:02d} | Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f} | LR: {lr:.6f}")
         
-        # Save latest epoch checkpoint so training progress is never lost
-        latest_path = os.path.join(args.save_dir, "supcon_latest.pt")
-        torch.save({
+        save_dict = {
             "epoch": epoch,
             "encoder_state_dict": encoder.state_dict(),
             "projection_head_state_dict": projection_head.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "val_loss": avg_val_loss
-        }, latest_path)
+        }
+        if classifier is not None:
+            save_dict["classifier_state_dict"] = classifier.state_dict()
+            
+        # Save latest epoch checkpoint so training progress is never lost
+        latest_path = os.path.join(args.save_dir, "supcon_latest.pt")
+        torch.save(save_dict, latest_path)
 
         # Save best checkpoint
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             checkpoint_path = os.path.join(args.save_dir, "supcon_best.pt")
-            torch.save({
-                "epoch": epoch,
-                "encoder_state_dict": encoder.state_dict(),
-                "projection_head_state_dict": projection_head.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "val_loss": avg_val_loss
-            }, checkpoint_path)
+            torch.save(save_dict, checkpoint_path)
             print(f"Saved new best checkpoint to {checkpoint_path}")
 
     # Load best checkpoint weights before computing centroids
