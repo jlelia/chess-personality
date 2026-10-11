@@ -5,9 +5,12 @@ description = "A chess stylometry system that analyzes playing styles and matche
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.143.0",
     "numpy>=2.3.3",
     "python-chess>=1.999",
+    "python-multipart>=0.0.32",
     "torch>=2.13.0",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Personality Indexer | Grandmaster Stylometry</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="background-glow"></div>
+  
+  <header class="app-header">
+    <div class="header-container">
+      <div class="logo">
+        <span class="logo-icon">♞</span>
+        <div class="logo-text">
+          <h1>Chess Personality Indexer</h1>
+          <p class="tagline">Deep Latent Stylometry & Grandmaster Mapping</p>
+        </div>
+      </div>
+      <div class="model-badge">
+        <span class="badge-dot"></span>
+        <span>JEPA + SupCon Active</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Input Section -->
+    <section class="card input-card">
+      <div class="tabs-header">
+        <button class="tab-btn active" id="tab-upload">Upload PGN</button>
+        <button class="tab-btn" id="tab-paste">Paste PGN Text</button>
+      </div>
+
+      <!-- Upload View -->
+      <div class="tab-content" id="view-upload">
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" id="pgn-file-input" accept=".pgn,.txt" hidden>
+          <div class="drop-zone-content">
+            <span class="upload-icon">♟</span>
+            <h3>Drag & Drop your PGN file here</h3>
+            <p>Single game or full multi-game tournament files supported</p>
+            <button class="btn btn-secondary" id="browse-btn">Browse Computer</button>
+            <span class="file-name-display" id="file-name-display"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paste View -->
+      <div class="tab-content hidden" id="view-paste">
+        <textarea id="pgn-text-input" placeholder="Paste standard PGN notation here... (e.g. 1. e4 e5 2. Nf3 Nc6 3. Bb5...)"></textarea>
+      </div>
+
+      <!-- Options Row -->
+      <div class="options-row">
+        <div class="input-group">
+          <label for="player-name-input">Target Player Name (Optional)</label>
+          <input type="text" id="player-name-input" placeholder="e.g. JamesElia (auto-detected if blank)">
+        </div>
+        <div class="actions-group">
+          <button class="btn btn-ghost" id="sample-btn">Try Sample Game</button>
+          <button class="btn btn-primary" id="analyze-btn">Analyze Personality</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Loading State -->
+    <section class="card loading-card hidden" id="loading-card">
+      <div class="spinner-container">
+        <div class="chess-spinner">♞</div>
+        <h3>Encoding Board Representations...</h3>
+        <p>Extracting 18-channel tensors, applying POV normalization, and querying the 22 Grandmaster latent space.</p>
+      </div>
+    </section>
+
+    <!-- Results Section -->
+    <section class="results-section hidden" id="results-section">
+      
+      <!-- Primary Match Hero Card -->
+      <div class="card hero-card">
+        <div class="hero-header">
+          <span class="hero-kicker">Primary Stylistic Match</span>
+          <span class="games-badge" id="hero-games-badge">1 Game Analyzed</span>
+        </div>
+        
+        <div class="hero-body">
+          <div class="hero-avatar" id="hero-avatar">♚</div>
+          <div class="hero-info">
+            <h2 class="hero-name" id="hero-name">Grandmaster</h2>
+            <div class="hero-archetype" id="hero-archetype">Attacking Firebrand</div>
+            <p class="hero-description" id="hero-description">Dynamic initiative and tactical clarity.</p>
+          </div>
+          <div class="hero-stat">
+            <div class="stat-value" id="hero-similarity">95.3%</div>
+            <div class="stat-label">Alignment Index</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Traits and Podium Grid -->
+      <div class="results-grid">
+        
+        <!-- Stylistic Traits -->
+        <div class="card traits-card">
+          <h3 class="card-title">Stylistic Radar Attributes</h3>
+          <p class="card-subtitle">Projected balance across historical play styles</p>
+          
+          <div class="traits-list">
+            <div class="trait-row">
+              <div class="trait-meta">
+                <span class="trait-icon">⚔️</span>
+                <span class="trait-name">Tactical Sharpness</span>
+                <span class="trait-pct" id="trait-tactical">0%</span>
+              </div>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-tactical"></div></div>
+            </div>
+
+            <div class="trait-row">
+              <div class="trait-meta">
+                <span class="trait-icon">🛡️</span>
+                <span class="trait-name">Positional Solidity</span>
+                <span class="trait-pct" id="trait-positional">0%</span>
+              </div>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-positional"></div></div>
+            </div>
+
+            <div class="trait-row">
+              <div class="trait-meta">
+                <span class="trait-icon">⚡</span>
+                <span class="trait-name">Dynamic Initiative</span>
+                <span class="trait-pct" id="trait-initiative">0%</span>
+              </div>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-initiative"></div></div>
+            </div>
+
+            <div class="trait-row">
+              <div class="trait-meta">
+                <span class="trait-icon">👑</span>
+                <span class="trait-name">Endgame Technique</span>
+                <span class="trait-pct" id="trait-endgame">0%</span>
+              </div>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-endgame"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top 5 Podium -->
+        <div class="card podium-card">
+          <h3 class="card-title">Top 5 Grandmaster Podium</h3>
+          <p class="card-subtitle">Closest latent cluster alignments</p>
+          
+          <div class="podium-list" id="podium-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Full 22 Grandmaster Table -->
+      <div class="card full-table-card">
+        <div class="table-header-flex">
+          <div>
+            <h3 class="card-title">Full 22 Grandmaster Alignment</h3>
+            <p class="card-subtitle">Complete cosine similarity coordinates across the master manifold</p>
+          </div>
+          <input type="text" id="filter-input" placeholder="Filter Grandmasters..." class="filter-input">
+        </div>
+
+        <div class="table-responsive">
+          <table class="gm-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Grandmaster</th>
+                <th>Stylistic Archetype</th>
+                <th>Similarity Index</th>
+                <th>Raw Cosine</th>
+              </tr>
+            </thead>
+            <tbody id="gm-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Chess Personality Indexer &bull; Machine-Learned Stylometry via ResNet &amp; Transformer JEPA</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

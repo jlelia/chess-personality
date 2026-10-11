@@ -50,25 +50,47 @@ uv run python train_phase1.py --data_dir preprocessed_data --save_dir checkpoint
 ```
 
 ### 3. Phase 2: SupCon Fine-tuning
-Run contrastive fine-tuning using the checkpoint from Phase 1:
+Run contrastive fine-tuning using balanced batch sampling (22 GMs × 12 games) and hybrid SupCon + Cross-Entropy loss:
 ```bash
-uv run python train_phase2.py --data_dir preprocessed_data --checkpoint checkpoints/jepa_best.pt --save_dir checkpoints --epochs 5 --batch_size 4096
+uv run python train_phase2.py --data_dir preprocessed_data --checkpoint checkpoints/jepa_best.pt --save_dir checkpoints_v2 --epochs 4 --batch_size 264
 ```
 
-### 4. Running the Local Demo & Inference
-Evaluate any user PGN file and match playing style to the 22 Grandmasters:
+### 4. Running the Web Application
+Launch the local web app with real-time browser interface and REST API:
+```bash
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser to:
+- Drag & drop single or multi-game `.pgn` files or paste notation directly.
+- Inspect the primary Grandmaster match, alignment percentage, and narrative archetype.
+- View stylistic radar attributes (*Tactical Sharpness*, *Positional Solidity*, *Dynamic Initiative*, *Endgame Technique*).
+- Explore the podium and full 22 Grandmaster cosine alignment rankings.
+
+### 5. Running the CLI Demo
+Evaluate any user PGN file directly from the terminal:
 ```bash
 uv run python demo.py --pgn test.pgn --player "JamesElia"
 ```
 
-### 5. Held-out Validation Benchmark
-Evaluate the model against 1,675 held-out games (100 games held out for masters with >2,000 games; 25 for masters with ≤2,000 games) to calculate Top-1, Top-3, Top-5 retrieval accuracy and Mean Reciprocal Rank (MRR):
+### 6. Held-out Validation Benchmarks
+The model was evaluated against **1,675 strictly held-out unseen games** (100 games held out for masters with >2,000 games; 25 for masters with ≤2,000 games) across 1-game, 3-game, and 10-game profile aggregations:
+
+| Evaluation Setup | Top-1 Accuracy | Top-3 Accuracy | Top-5 Accuracy | Mean Reciprocal Rank (MRR) |
+| :--- | :---: | :---: | :---: | :---: |
+| **1-Game (Single Game)** | 14.57% | 34.75% | 51.28% | 0.3202 |
+| **3-Game Profile** | 30.64% | 57.09% | 71.45% | 0.4862 |
+| **10-Game Profile** | **51.00%** | **80.18%** | **90.55%** | **0.6728** |
+
+*Note: In contrastive stylometry, a player's true stylistic fingerprint stabilizes as multiple games are aggregated. With a 10-game sample, the correct Grandmaster is retrieved in the Top-3 over 80% of the time and in the Top-5 over 90% of the time.*
+
+To re-run the benchmark suite:
 ```bash
 uv run python demo.py --validate
 ```
 
-### 6. Running Unit Tests
+### 7. Running Unit Tests
 Validate the pipeline, models, and optimization logic:
 ```bash
 PYTHONPATH=. uv run pytest
 ```
+
