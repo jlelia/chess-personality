@@ -84,38 +84,54 @@ class ChessStylometryEngine:
         padding_mask_t = torch.from_numpy(padding_mask_np).unsqueeze(0)
         return boards_t, padding_mask_t
 
-    def parse_pgn_text(self, pgn_content: str, player_name: str = None) -> list[dict]:
-        """Parses all valid games from PGN text content."""
+    def parse_pgn_text(self, pgn_content: str, player_name: str = None, side: str = "white") -> list[dict]:
+        """Parses all valid games from PGN text content with move validation."""
         pgn_io = io.StringIO(pgn_content)
         games_data = []
 
         while True:
-            game = chess.pgn.read_game(pgn_io)
+            try:
+                game = chess.pgn.read_game(pgn_io)
+            except Exception:
+                break
             if game is None:
                 break
 
+            moves = list(game.mainline_moves())
+            # Require at least 3 plies (moves) for a valid playable game
+            if len(moves) < 3:
+                continue
+
             headers = game.headers
-            white_player = headers.get("White", "Unknown White")
-            black_player = headers.get("Black", "Unknown Black")
+            white_player = headers.get("White", "White Player")
+            black_player = headers.get("Black", "Black Player")
             event = headers.get("Event", "Game")
             date = headers.get("Date", "????.??.??")
             result = headers.get("Result", "*")
 
             # Determine perspective
-            target_color = chess.WHITE
-            active_player = white_player
+            side_norm = (side or "white").lower().strip()
+            if side_norm == "black":
+                target_color = chess.BLACK
+                active_player = black_player
+            elif player_name or side_norm == "auto":
+                target_color = chess.WHITE
+                active_player = white_player
 
-            if player_name:
-                p_clean = re.sub(r'[^a-zA-Z0-9]', '', player_name).lower()
-                w_clean = re.sub(r'[^a-zA-Z0-9]', '', white_player).lower()
-                b_clean = re.sub(r'[^a-zA-Z0-9]', '', black_player).lower()
+                if player_name:
+                    p_clean = re.sub(r'[^a-zA-Z0-9]', '', player_name).lower()
+                    w_clean = re.sub(r'[^a-zA-Z0-9]', '', white_player).lower()
+                    b_clean = re.sub(r'[^a-zA-Z0-9]', '', black_player).lower()
 
-                if p_clean in b_clean and p_clean not in w_clean:
-                    target_color = chess.BLACK
-                    active_player = black_player
-                elif p_clean in w_clean:
-                    target_color = chess.WHITE
-                    active_player = white_player
+                    if p_clean in b_clean and p_clean not in w_clean:
+                        target_color = chess.BLACK
+                        active_player = black_player
+                    elif p_clean in w_clean:
+                        target_color = chess.WHITE
+                        active_player = white_player
+            else:
+                target_color = chess.WHITE
+                active_player = white_player
 
             games_data.append({
                 "game": game,
@@ -126,16 +142,20 @@ class ChessStylometryEngine:
                 "result": result,
                 "target_color": target_color,
                 "active_player": active_player,
-                "ply_count": len(list(game.mainline_moves()))
+                "ply_count": len(moves)
             })
+
+        if not games_data:
+            raise ValueError(
+                "No valid chess moves found in the input. "
+                "Please provide standard PGN notation with at least a few moves (e.g. 1. e4 e5 2. Nf3 Nc6...)."
+            )
 
         return games_data
 
-    def analyze_games(self, pgn_content: str, player_name: str = None) -> dict:
+    def analyze_games(self, pgn_content: str, player_name: str = None, side: str = "white") -> dict:
         """Encodes all games in the PGN, computes profile vector, and matches against the 22 GMs."""
-        parsed_games = self.parse_pgn_text(pgn_content, player_name)
-        if not parsed_games:
-            raise ValueError("No valid chess games found in the provided PGN content.")
+        parsed_games = self.parse_pgn_text(pgn_content, player_name=player_name, side=side)
 
         game_embeddings = []
         games_summary = []

@@ -55,11 +55,30 @@
         <textarea id="pgn-text-input" placeholder="Paste standard PGN notation here... (e.g. 1. e4 e5 2. Nf3 Nc6 3. Bb5...)"></textarea>
       </div>
 
+      <!-- Error Banner -->
+      <div class="error-banner hidden" id="error-banner">
+        <span class="error-icon">⚠️</span>
+        <span id="error-message"></span>
+      </div>
+
       <!-- Options Row -->
       <div class="options-row">
-        <div class="input-group">
-          <label for="player-name-input">Target Player Name (Optional)</label>
-          <input type="text" id="player-name-input" placeholder="e.g. JamesElia (auto-detected if blank)">
+        <div class="side-selector-container">
+          <label class="options-label">Analyze Perspective</label>
+          <div class="side-toggle-group">
+            <button type="button" class="side-btn active" data-side="white" id="side-white-btn">
+              <span class="side-indicator white-indicator"></span> White
+            </button>
+            <button type="button" class="side-btn" data-side="black" id="side-black-btn">
+              <span class="side-indicator black-indicator"></span> Black
+            </button>
+            <button type="button" class="side-btn" data-side="auto" id="side-auto-btn">
+              <span>Auto (Username)</span>
+            </button>
+          </div>
+          <div class="username-input-wrapper hidden" id="username-wrapper">
+            <input type="text" id="player-name-input" placeholder="Enter Chess.com / Lichess username...">
+          </div>
         </div>
         <div class="actions-group">
           <button class="btn btn-ghost" id="sample-btn">Try Sample Game</button>

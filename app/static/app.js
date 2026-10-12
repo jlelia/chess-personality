@@ -17,6 +17,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const sampleBtn = document.getElementById('sample-btn');
   const analyzeBtn = document.getElementById('analyze-btn');
 
+  // Side Selector
+  const sideBtns = document.querySelectorAll('.side-btn');
+  const usernameWrapper = document.getElementById('username-wrapper');
+  let selectedSide = 'white';
+
+  // Error Banner
+  const errorBanner = document.getElementById('error-banner');
+  const errorMessage = document.getElementById('error-message');
+
+  function showError(msg) {
+    errorMessage.textContent = msg;
+    errorBanner.classList.remove('hidden');
+  }
+
+  function hideError() {
+    errorBanner.classList.add('hidden');
+  }
+
+  sideBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      sideBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedSide = btn.getAttribute('data-side');
+
+      if (selectedSide === 'auto') {
+        usernameWrapper.classList.remove('hidden');
+        playerNameInput.focus();
+      } else {
+        usernameWrapper.classList.add('hidden');
+      }
+      hideError();
+    });
+  });
+
+  pgnTextInput.addEventListener('input', hideError);
+
   // Sections
   const loadingCard = document.getElementById('loading-card');
   const resultsSection = document.getElementById('results-section');
@@ -53,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tabPaste.classList.remove('active');
     viewUpload.classList.remove('hidden');
     viewPaste.classList.add('hidden');
+    hideError();
   });
 
   tabPaste.addEventListener('click', () => {
@@ -60,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tabUpload.classList.remove('active');
     viewPaste.classList.remove('hidden');
     viewUpload.classList.add('hidden');
+    hideError();
   });
 
   // Browse file
@@ -99,6 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleFileSelected(file) {
     selectedFile = file;
     fileNameDisplay.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    hideError();
   }
 
   // Load sample game
@@ -111,9 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       tabPaste.click();
       pgnTextInput.value = data.pgn_text;
-      playerNameInput.value = data.player_name;
+      document.getElementById('side-white-btn').click();
+      hideError();
     } catch (err) {
-      alert('Failed to load sample game.');
+      showError('Failed to load sample game.');
     } finally {
       sampleBtn.disabled = false;
       sampleBtn.textContent = 'Try Sample Game';
@@ -122,17 +162,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Analyze Action
   analyzeBtn.addEventListener('click', async () => {
+    hideError();
     const isPasteActive = tabPaste.classList.contains('active');
     const pgnText = pgnTextInput.value.trim();
     const playerName = playerNameInput.value.trim();
 
     if (isPasteActive && !pgnText) {
-      alert('Please paste PGN notation first, or click "Try Sample Game".');
+      showError('Please paste PGN notation first, or click "Try Sample Game".');
       return;
     }
 
     if (!isPasteActive && !selectedFile) {
-      alert('Please select or drop a PGN file first.');
+      showError('Please select or drop a PGN file first.');
       return;
     }
 
@@ -142,7 +183,9 @@ document.addEventListener('DOMContentLoaded', () => {
     resultsSection.classList.add('hidden');
 
     const formData = new FormData();
-    if (playerName) {
+    formData.append('side', selectedSide);
+
+    if (selectedSide === 'auto' && playerName) {
       formData.append('player_name', playerName);
     }
 
@@ -160,13 +203,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Analysis failed');
+        throw new Error(errorData.detail || 'Analysis failed. Please ensure your input is valid PGN notation.');
       }
 
       const report = await response.json();
       renderResults(report);
     } catch (err) {
-      alert(`Analysis error: ${err.message}`);
+      showError(err.message);
     } finally {
       loadingCard.classList.add('hidden');
       analyzeBtn.disabled = false;

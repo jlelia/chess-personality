@@ -77,7 +77,8 @@ async def get_grandmasters():
 async def analyze_pgn(
     file: UploadFile | None = File(None),
     pgn_text: str | None = Form(None),
-    player_name: str | None = Form(None)
+    player_name: str | None = Form(None),
+    side: str = Form("white")
 ):
     if engine is None:
         raise HTTPException(status_code=503, detail="Inference engine is not ready.")
@@ -93,7 +94,7 @@ async def analyze_pgn(
         raise HTTPException(status_code=400, detail="Please provide a valid PGN file or paste PGN text.")
 
     try:
-        report = engine.analyze_games(content, player_name=player_name)
+        report = engine.analyze_games(content, player_name=player_name, side=side)
         return report
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
