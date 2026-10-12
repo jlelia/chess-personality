@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Sections
   const loadingCard = document.getElementById('loading-card');
   const resultsSection = document.getElementById('results-section');
+  const truncatedNotice = document.getElementById('truncated-notice');
 
   // Hero Card Elements
   const heroName = document.getElementById('hero-name');
@@ -354,6 +355,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderResults(report) {
     const top = report.top_match;
     currentRankings = report.all_rankings;
+
+    // Truncation notice (server analyzes at most MAX_GAMES_CAP games)
+    if (report.truncated_notice) {
+      truncatedNotice.textContent = report.truncated_notice;
+      truncatedNotice.classList.remove('hidden');
+    } else {
+      truncatedNotice.classList.add('hidden');
+    }
 
     // Hero
     heroName.textContent = top.name;

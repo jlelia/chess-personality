@@ -266,6 +266,19 @@ textarea#pgn-text-input:focus {
   flex-shrink: 0;
 }
 
+/* Truncation Notice */
+.truncated-notice {
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: #f5d77f;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  animation: fadeIn 0.25s ease-out;
+}
+
 /* Side Selector */
 .side-selector-container {
   display: flex;

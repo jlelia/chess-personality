@@ -17,6 +17,10 @@ from demo import GM_PROFILES
 WEIGHTS_URL = "https://github.com/jlelia/chess-personality/releases/download/v1.0.0/supcon_best.pt"
 CENTROIDS_URL = "https://github.com/jlelia/chess-personality/releases/download/v1.0.0/gm_centroids.pt"
 
+# Upper bound on games analyzed per request; anything past this is counted
+# but not encoded, so a huge multi-game PGN cannot stall the server.
+MAX_GAMES_CAP = 25
+
 def _ensure_checkpoint(path_str: str, url: str):
     p = Path(path_str)
     if not p.exists():
@@ -134,13 +138,10 @@ class ChessStylometryEngine:
                 target_color = chess.WHITE
                 active_player = white_player
 
-            # Replay all moves to obtain the final position board
-            final_board = game.board()
-            for move in moves:
-                final_board.push(move)
-            final_fen = final_board.fen()
-            final_svg = chess.svg.board(final_board, orientation=target_color, size=280)
-
+            # NOTE: the final-position replay, FEN and SVG snapshot are
+            # deliberately deferred to analyze_games so they are only
+            # produced for games that survive the cap — a multi-thousand-game
+            # PGN no longer renders thousands of boards just to truncate them.
             games_data.append({
                 "game": game,
                 "white": white_player,
@@ -150,9 +151,7 @@ class ChessStylometryEngine:
                 "result": result,
                 "target_color": target_color,
                 "active_player": active_player,
-                "ply_count": len(moves),
-                "final_fen": final_fen,
-                "final_board_svg": final_svg
+                "ply_count": len(moves)
             })
 
         if not games_data:
@@ -167,7 +166,6 @@ class ChessStylometryEngine:
         """Encodes all games in the PGN, computes profile vector, and matches against the 22 GMs."""
         parsed_games = self.parse_pgn_text(pgn_content, player_name=player_name, side=side)
 
-        MAX_GAMES_CAP = 25
         truncated_notice = None
         if len(parsed_games) > MAX_GAMES_CAP:
             truncated_notice = f"Analyzed the first {MAX_GAMES_CAP} of {len(parsed_games)} games for server responsiveness."
@@ -191,6 +189,13 @@ class ChessStylometryEngine:
 
                 game_embeddings.append(z_proj_centered.squeeze(0))
 
+                # Replay the mainline for the final-position snapshot. Only
+                # reached by games within the cap, so oversized PGN files pay
+                # only the lightweight parse/count cost for the remainder.
+                final_board = game.board()
+                for move in game.mainline_moves():
+                    final_board.push(move)
+
                 games_summary.append({
                     "game_num": idx + 1,
                     "white": g_info["white"],
@@ -200,8 +205,8 @@ class ChessStylometryEngine:
                     "date": g_info["date"],
                     "played_as": "White" if target_color == chess.WHITE else "Black",
                     "plies": g_info["ply_count"],
-                    "final_fen": g_info["final_fen"],
-                    "final_board_svg": g_info["final_board_svg"]
+                    "final_fen": final_board.fen(),
+                    "final_board_svg": chess.svg.board(final_board, orientation=target_color, size=280)
                 })
 
             # Profile embedding: mean over all games in this PGN, re-normalized to unit sphere
