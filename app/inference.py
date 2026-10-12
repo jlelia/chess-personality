@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import urllib.request
 import chess
 import chess.pgn
 import numpy as np
@@ -12,15 +13,34 @@ from model import ChessEncoder, SupConProjectionHead
 from preprocess_games import board_to_18_channel, GRANDMASTERS, GM_TO_LABEL
 from demo import GM_PROFILES
 
+WEIGHTS_URL = "https://github.com/jlelia/chess-personality/releases/download/v1.0.0/supcon_best.pt"
+CENTROIDS_URL = "https://github.com/jlelia/chess-personality/releases/download/v1.0.0/gm_centroids.pt"
+
+def _ensure_checkpoint(path_str: str, url: str):
+    p = Path(path_str)
+    if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Checkpoint '{path_str}' not found. Downloading from GitHub Release: {url}...")
+        urllib.request.urlretrieve(url, str(p))
+        print(f"Downloaded '{path_str}' successfully!")
+
 class ChessStylometryEngine:
     """In-memory inference engine for Grandmaster stylometry matching."""
 
     def __init__(self, checkpoint_path: str = "checkpoints_v2/supcon_best.pt",
                  centroids_path: str = "checkpoints_v2/gm_centroids.pt"):
-        # Fallback to v1 if v2 does not exist
+        # Auto-download checkpoints if not present locally
         if not os.path.exists(checkpoint_path):
-            checkpoint_path = "checkpoints/supcon_best.pt"
-            centroids_path = "checkpoints/gm_centroids.pt"
+            if os.path.exists("checkpoints/supcon_best.pt"):
+                checkpoint_path = "checkpoints/supcon_best.pt"
+            else:
+                _ensure_checkpoint(checkpoint_path, WEIGHTS_URL)
+
+        if not os.path.exists(centroids_path):
+            if os.path.exists("checkpoints/gm_centroids.pt"):
+                centroids_path = "checkpoints/gm_centroids.pt"
+            else:
+                _ensure_checkpoint(centroids_path, CENTROIDS_URL)
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
         print(f"Loading ChessStylometryEngine on {self.device} from {checkpoint_path}...")

@@ -17,7 +17,11 @@ RUN uv sync --frozen --no-dev
 # Copy application code and models
 COPY app/ ./app/
 COPY model.py preprocess_games.py demo.py test.pgn ./
-COPY checkpoints_v2/ ./checkpoints_v2/
+
+# Download release model checkpoints (13MB)
+RUN mkdir -p checkpoints_v2 && \
+    curl -fL -o checkpoints_v2/supcon_best.pt https://github.com/jlelia/chess-personality/releases/download/v1.0.0/supcon_best.pt && \
+    curl -fL -o checkpoints_v2/gm_centroids.pt https://github.com/jlelia/chess-personality/releases/download/v1.0.0/gm_centroids.pt
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 7860
