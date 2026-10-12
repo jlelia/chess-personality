@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import urllib.request
 import urllib.error
@@ -81,6 +82,9 @@ def fetch_online_games(platform: str, username: str, max_games: int = 10) -> str
     clean_user = username.strip()
     if not clean_user:
         raise ValueError("Please provide a valid username.")
+
+    if not re.match(r"^[a-zA-Z0-9_\-\.]{1,40}$", clean_user):
+        raise ValueError("Invalid username format. Usernames may only contain alphanumeric characters, underscores, and hyphens.")
 
     plat = platform.lower().strip()
     if plat == "lichess":
