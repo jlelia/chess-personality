@@ -1,4 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Stale-asset guard: if the served HTML predates this script version, some
+  // element lookups below return null and binding throws mid-way, silently
+  // disabling every control registered after the crash point. Detect the
+  // mismatch and prompt a reload instead of half-initializing the page.
+  const requiredIds = [
+    'tab-upload', 'tab-paste', 'tab-online',
+    'view-upload', 'view-paste', 'view-online',
+    'fetch-online-btn', 'analyze-btn', 'share-card-btn'
+  ];
+  const missingIds = requiredIds.filter(id => !document.getElementById(id));
+  if (missingIds.length > 0) {
+    console.warn('[ChessPersonality] Stale page assets detected (missing: ' + missingIds.join(', ') + ').');
+    const reloadBanner = document.createElement('div');
+    reloadBanner.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:9999;padding:12px;text-align:center;' +
+      'background:#d4af37;color:#0b0f17;font:600 14px Inter,system-ui,sans-serif;cursor:pointer;';
+    reloadBanner.textContent = 'This page was updated in the background — click here to reload and restore full functionality.';
+    reloadBanner.addEventListener('click', () => window.location.reload());
+    document.body.prepend(reloadBanner);
+    return;
+  }
+
   // Tabs
   const tabUpload = document.getElementById('tab-upload');
   const tabPaste = document.getElementById('tab-paste');

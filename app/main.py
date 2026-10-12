@@ -1,13 +1,14 @@
 import os
 import re
 import json
+import hashlib
 import urllib.request
 import urllib.error
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app.inference import ChessStylometryEngine
@@ -33,16 +34,49 @@ app = FastAPI(
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(exist_ok=True, parents=True)
 
+def _compute_static_version() -> str:
+    """Content hash of static assets, used as a cache-busting query parameter."""
+    digest = hashlib.sha256()
+    for name in ("app.js", "style.css"):
+        try:
+            digest.update((STATIC_DIR / name).read_bytes())
+        except OSError:
+            pass
+    return digest.hexdigest()[:12]
+
+STATIC_VERSION = _compute_static_version()
+
 class AnalyzeTextRequest(BaseModel):
     pgn_text: str
     player_name: str | None = None
+
+@app.middleware("http")
+async def cache_headers_middleware(request, call_next):
+    """Explicit cache policy: force revalidation of the HTML shell, make
+    content-versioned static assets immutable, and never cache API responses."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if "v=" in request.url.query else "no-cache"
+        )
+    elif path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    else:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse("<h1>Chess Personality Indexer Backend Running</h1>")
-    return FileResponse(index_file)
+    # Inject the content-hash version into static asset URLs so browsers fetch
+    # fresh JS/CSS after each deploy instead of replaying stale cached files.
+    html = index_file.read_text(encoding="utf-8")
+    html = html.replace("/static/app.js", f"/static/app.js?v={STATIC_VERSION}")
+    html = html.replace("/static/style.css", f"/static/style.css?v={STATIC_VERSION}")
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache"})
 
 @app.get("/api/health")
 async def health():
