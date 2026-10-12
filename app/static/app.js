@@ -109,7 +109,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // are interpolated into innerHTML templates. PGN headers are attacker-
   // controllable, e.g. [White "<img src=x onerror=...>"].
   function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    // Avoid the ?? operator (ES2020) so the script still parses on Safari <= 13.0.
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]));
   }
