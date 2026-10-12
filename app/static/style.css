@@ -615,11 +615,68 @@ textarea#pgn-text-input:focus {
 /* Footer */
 .app-footer {
   text-align: center;
-  padding: 24px;
+  padding: 30px 24px;
   font-size: 12px;
   color: var(--text-muted);
   border-top: 1px solid var(--card-border);
   background: var(--bg-dark);
+}
+
+.footer-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.tip-jar {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(212, 175, 55, 0.06);
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  padding: 8px 18px;
+  border-radius: 30px;
+  font-size: 13px;
+  color: var(--text-main);
+  transition: var(--transition);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tip-jar:hover {
+  background: rgba(212, 175, 55, 0.1);
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+.tip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #d4af37 0%, #b89727 100%);
+  color: #0b0f17;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  text-decoration: none;
+  box-shadow: 0 2px 10px rgba(212, 175, 55, 0.25);
+  transition: var(--transition);
+}
+
+.tip-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.45);
+  filter: brightness(1.1);
+}
+
+.tip-icon {
+  font-size: 13px;
+}
+
+.footer-meta {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 .hidden {
