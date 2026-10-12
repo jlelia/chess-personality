@@ -65,15 +65,20 @@
       <div class="options-row">
         <div class="side-selector-container">
           <label class="options-label">Analyze Perspective</label>
-          <div class="side-toggle-group">
+          <div class="side-toggle-group" role="group" aria-label="Perspective selection">
             <button type="button" class="side-btn active" data-side="white" id="side-white-btn">
-              <span class="side-indicator white-indicator"></span> White
+              <span class="side-indicator white-indicator"></span>
+              <span class="side-label">White</span>
+              <span class="side-check">✓</span>
             </button>
             <button type="button" class="side-btn" data-side="black" id="side-black-btn">
-              <span class="side-indicator black-indicator"></span> Black
+              <span class="side-indicator black-indicator"></span>
+              <span class="side-label">Black</span>
+              <span class="side-check hidden">✓</span>
             </button>
             <button type="button" class="side-btn" data-side="auto" id="side-auto-btn">
-              <span>Auto (Username)</span>
+              <span class="side-label">Auto (Username)</span>
+              <span class="side-check hidden">✓</span>
             </button>
           </div>
           <div class="username-input-wrapper hidden" id="username-wrapper">

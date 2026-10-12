@@ -284,38 +284,54 @@ textarea#pgn-text-input:focus {
 
 .side-toggle-group {
   display: inline-flex;
-  background: rgba(11, 15, 23, 0.8);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-sm);
-  padding: 3px;
+  background: rgba(8, 12, 18, 0.95);
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 28px;
+  padding: 4px;
   gap: 4px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 
 .side-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
-  padding: 7px 14px;
-  border-radius: 4px;
+  padding: 7px 16px;
+  border-radius: 22px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.6;
 }
 
 .side-btn:hover {
+  opacity: 0.9;
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.05);
 }
 
 .side-btn.active {
-  background: var(--card-bg);
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.22) 0%, rgba(212, 175, 55, 0.08) 100%);
+  color: #ffffff;
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 14px rgba(212, 175, 55, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+
+.side-btn.active .side-label {
+  font-weight: 700;
+  color: var(--gold-light);
+}
+
+.side-check {
+  font-size: 11px;
   color: var(--gold-primary);
-  border-color: rgba(212, 175, 55, 0.35);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  font-weight: 900;
+  margin-left: 2px;
 }
 
 .side-indicator {
@@ -323,16 +339,17 @@ textarea#pgn-text-input:focus {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .white-indicator {
   background: #f8fafc;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
 }
 
 .black-indicator {
-  background: #1e293b;
-  border: 1px solid #64748b;
+  background: #0f172a;
+  border: 1.5px solid #94a3b8;
 }
 
 .username-input-wrapper {

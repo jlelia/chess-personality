@@ -37,8 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   sideBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      sideBtns.forEach(b => b.classList.remove('active'));
+      sideBtns.forEach(b => {
+        b.classList.remove('active');
+        const check = b.querySelector('.side-check');
+        if (check) check.classList.add('hidden');
+      });
+
       btn.classList.add('active');
+      const activeCheck = btn.querySelector('.side-check');
+      if (activeCheck) activeCheck.classList.remove('hidden');
+
       selectedSide = btn.getAttribute('data-side');
 
       if (selectedSide === 'auto') {
