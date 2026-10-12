@@ -104,6 +104,15 @@ document.addEventListener('DOMContentLoaded', () => {
     errorBanner.classList.remove('hidden');
   }
 
+  // Escape untrusted strings (PGN header values, usernames, etc.) before they
+  // are interpolated into innerHTML templates. PGN headers are attacker-
+  // controllable, e.g. [White "<img src=x onerror=...>"].
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
   function hideError() {
     errorBanner.classList.add('hidden');
   }
@@ -380,10 +389,10 @@ document.addEventListener('DOMContentLoaded', () => {
       div.innerHTML = `
         <span class="podium-rank">#${idx + 1}</span>
         <div class="podium-name-group">
-          <div class="podium-name">${item.name}</div>
-          <div class="podium-title">${item.title}</div>
+          <div class="podium-name">${escapeHtml(item.name)}</div>
+          <div class="podium-title">${escapeHtml(item.title)}</div>
         </div>
-        <span class="podium-score">${item.similarity_pct}%</span>
+        <span class="podium-score">${escapeHtml(item.similarity_pct)}%</span>
       `;
       podiumList.appendChild(div);
     });
@@ -408,12 +417,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         tr.innerHTML = `
-          <td><strong>#${game.game_num}</strong></td>
-          <td>${game.white || 'White'}</td>
-          <td>${game.black || 'Black'}</td>
-          <td><strong class="${resClass}">${resText}</strong></td>
-          <td>${game.played_as}</td>
-          <td>${game.plies} plies</td>
+          <td><strong>#${escapeHtml(game.game_num)}</strong></td>
+          <td>${escapeHtml(game.white) || 'White'}</td>
+          <td>${escapeHtml(game.black) || 'Black'}</td>
+          <td><strong class="${resClass}">${escapeHtml(resText)}</strong></td>
+          <td>${escapeHtml(game.played_as)}</td>
+          <td>${escapeHtml(game.plies)} plies</td>
           <td>
             <button type="button" class="inspect-btn" data-game-idx="${idx}">Inspect</button>
           </td>
@@ -457,11 +466,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const cosVal = item.cosine_sim >= 0 ? `+${item.cosine_sim.toFixed(4)}` : `${item.cosine_sim.toFixed(4)}`;
       tr.innerHTML = `
-        <td><strong>#${item.rank}</strong></td>
-        <td><strong>${item.name}</strong></td>
-        <td>${item.title}</td>
-        <td><strong>${item.similarity_pct}%</strong></td>
-        <td style="color: var(--text-muted); font-family: monospace;">${cosVal}</td>
+        <td><strong>#${escapeHtml(item.rank)}</strong></td>
+        <td><strong>${escapeHtml(item.name)}</strong></td>
+        <td>${escapeHtml(item.title)}</td>
+        <td><strong>${escapeHtml(item.similarity_pct)}%</strong></td>
+        <td style="color: var(--text-muted); font-family: monospace;">${escapeHtml(cosVal)}</td>
       `;
       gmTableBody.appendChild(tr);
     });
