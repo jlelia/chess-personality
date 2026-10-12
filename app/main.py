@@ -7,6 +7,7 @@ import urllib.error
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -176,7 +177,9 @@ def fetch_online_games(platform: str, username: str, max_games: int = 10) -> str
         raise ValueError(f"Unsupported platform '{platform}'. Please choose 'lichess' or 'chesscom'.")
 
 @app.get("/api/fetch-games")
-async def api_fetch_games(platform: str = "lichess", username: str = "", max_games: int = 10):
+def api_fetch_games(platform: str = "lichess", username: str = "", max_games: int = 10):
+    """Runs as a sync endpoint so FastAPI executes the blocking upstream HTTP
+    calls in its worker threadpool instead of freezing the event loop."""
     try:
         limit = max(1, min(max_games, 25))
         pgn_text = fetch_online_games(platform, username, max_games=limit)
@@ -215,7 +218,12 @@ async def analyze_pgn(
         raise HTTPException(status_code=400, detail="Please provide a valid PGN file or paste PGN text.")
 
     try:
-        report = engine.analyze_games(content, player_name=player_name, side=side)
+        # CPU/GPU-heavy encoding + SVG rendering would otherwise block the
+        # event loop (and every concurrent request, including /api/health);
+        # push it onto the shared worker threadpool instead.
+        report = await run_in_threadpool(
+            engine.analyze_games, content, player_name=player_name, side=side
+        )
         return report
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
