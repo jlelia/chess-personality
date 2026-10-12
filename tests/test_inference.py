@@ -27,6 +27,9 @@ def test_inference_pgn_parsing():
         assert len(result["all_rankings"]) == 22
         assert "style_radar" in result
         assert "tactical_sharpness" in result["style_radar"]
+        assert "primary_final_svg" in result
+        assert "<svg" in result["primary_final_svg"]
+        assert "final_fen" in result["games"][0]
 
 def test_invalid_pgn_rejection():
     if Path("checkpoints_v2/supcon_best.pt").exists():
@@ -43,3 +46,24 @@ def test_side_selection():
 
         parsed_white = engine.parse_pgn_text(dummy_pgn, side="white")
         assert parsed_white[0]["target_color"] == chess.WHITE
+
+def test_max_games_cap():
+    dummy_game = "[Event \"Test\"]\n\n1. e4 e5 2. Nf3 Nc6 1-0\n\n"
+    # Create PGN with 30 games
+    multi_pgn = dummy_game * 30
+    if Path("checkpoints_v2/supcon_best.pt").exists():
+        engine = ChessStylometryEngine()
+        result = engine.analyze_games(multi_pgn, side="white")
+        assert result["games_analyzed"] == 25
+        assert len(result["games"]) == 25
+        assert result["truncated_notice"] is not None
+        assert "first 25 of 30 games" in result["truncated_notice"]
+
+def test_fetch_online_games_validation():
+    from app.main import fetch_online_games
+    with pytest.raises(ValueError, match="Please provide a valid username"):
+        fetch_online_games("lichess", "   ")
+
+    with pytest.raises(ValueError, match="Unsupported platform"):
+        fetch_online_games("unknown_plat", "magnus")
+

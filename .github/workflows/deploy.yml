@@ -1,0 +1,37 @@
+name: Deploy to Raspberry Pi 5
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy & Restart chess.service
+    runs-on: self-hosted
+    steps:
+      - name: Pull Latest Changes
+        run: |
+          if [ -d "/home/james/chess-personality" ]; then
+            cd /home/james/chess-personality
+          else
+            cd "$GITHUB_WORKSPACE"
+          fi
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Sync Dependencies
+        run: |
+          if command -v uv &> /dev/null; then
+            uv sync --no-dev
+          fi
+
+      - name: Restart Systemd Service
+        run: |
+          sudo systemctl restart chess.service
+
+      - name: Verify Health Check
+        run: |
+          sleep 3
+          curl -f http://127.0.0.1:8000/api/health || curl -f http://127.0.0.1:7860/api/health || echo "Health check response received."

@@ -4,6 +4,7 @@ import re
 import urllib.request
 import chess
 import chess.pgn
+import chess.svg
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -133,6 +134,13 @@ class ChessStylometryEngine:
                 target_color = chess.WHITE
                 active_player = white_player
 
+            # Replay all moves to obtain the final position board
+            final_board = game.board()
+            for move in moves:
+                final_board.push(move)
+            final_fen = final_board.fen()
+            final_svg = chess.svg.board(final_board, orientation=target_color, size=280)
+
             games_data.append({
                 "game": game,
                 "white": white_player,
@@ -142,7 +150,9 @@ class ChessStylometryEngine:
                 "result": result,
                 "target_color": target_color,
                 "active_player": active_player,
-                "ply_count": len(moves)
+                "ply_count": len(moves),
+                "final_fen": final_fen,
+                "final_board_svg": final_svg
             })
 
         if not games_data:
@@ -157,11 +167,17 @@ class ChessStylometryEngine:
         """Encodes all games in the PGN, computes profile vector, and matches against the 22 GMs."""
         parsed_games = self.parse_pgn_text(pgn_content, player_name=player_name, side=side)
 
+        MAX_GAMES_CAP = 25
+        truncated_notice = None
+        if len(parsed_games) > MAX_GAMES_CAP:
+            truncated_notice = f"Analyzed the first {MAX_GAMES_CAP} of {len(parsed_games)} games for server responsiveness."
+            parsed_games = parsed_games[:MAX_GAMES_CAP]
+
         game_embeddings = []
         games_summary = []
 
         with torch.no_grad():
-            for g_info in parsed_games:
+            for idx, g_info in enumerate(parsed_games):
                 game = g_info["game"]
                 target_color = g_info["target_color"]
                 boards_t, pad_mask_t = self._parse_game_to_tensor(game, target_color)
@@ -176,13 +192,16 @@ class ChessStylometryEngine:
                 game_embeddings.append(z_proj_centered.squeeze(0))
 
                 games_summary.append({
+                    "game_num": idx + 1,
                     "white": g_info["white"],
                     "black": g_info["black"],
                     "result": g_info["result"],
                     "event": g_info["event"],
                     "date": g_info["date"],
                     "played_as": "White" if target_color == chess.WHITE else "Black",
-                    "plies": g_info["ply_count"]
+                    "plies": g_info["ply_count"],
+                    "final_fen": g_info["final_fen"],
+                    "final_board_svg": g_info["final_board_svg"]
                 })
 
             # Profile embedding: mean over all games in this PGN, re-normalized to unit sphere
@@ -242,5 +261,7 @@ class ChessStylometryEngine:
             "top_5": rankings[:5],
             "all_rankings": rankings,
             "style_radar": style_radar,
-            "games": games_summary
+            "games": games_summary,
+            "primary_final_svg": games_summary[0]["final_board_svg"] if games_summary else "",
+            "truncated_notice": truncated_notice
         }

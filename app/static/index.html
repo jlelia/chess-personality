@@ -34,6 +34,7 @@
       <div class="tabs-header">
         <button class="tab-btn active" id="tab-upload">Upload PGN</button>
         <button class="tab-btn" id="tab-paste">Paste PGN Text</button>
+        <button class="tab-btn" id="tab-online">Import Online (Lichess/Chess.com)</button>
       </div>
 
       <!-- Upload View -->
@@ -53,6 +54,36 @@
       <!-- Paste View -->
       <div class="tab-content hidden" id="view-paste">
         <textarea id="pgn-text-input" placeholder="Paste standard PGN notation here... (e.g. 1. e4 e5 2. Nf3 Nc6 3. Bb5...)"></textarea>
+      </div>
+
+      <!-- Online Import View -->
+      <div class="tab-content hidden" id="view-online">
+        <div class="online-box">
+          <div class="platform-toggle-row">
+            <label class="options-label">Platform:</label>
+            <div class="platform-btn-group">
+              <button type="button" class="plat-btn active" data-platform="lichess" id="plat-lichess-btn">Lichess.org</button>
+              <button type="button" class="plat-btn" data-platform="chesscom" id="plat-chesscom-btn">Chess.com</button>
+            </div>
+          </div>
+
+          <div class="online-inputs-row">
+            <div class="online-field-group">
+              <label for="online-username-input">Username</label>
+              <input type="text" id="online-username-input" placeholder="e.g. MagnusCarlsen">
+            </div>
+            <div class="online-field-group count-select-group">
+              <label for="online-count-select">Game Sample</label>
+              <select id="online-count-select" class="online-select">
+                <option value="5">Recent 5 Games</option>
+                <option value="10" selected>Recent 10 Games</option>
+                <option value="25">Recent 25 Games (Max)</option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-primary" id="fetch-online-btn">Fetch &amp; Load</button>
+          </div>
+          <div class="online-feedback hidden" id="online-feedback"></div>
+        </div>
       </div>
 
       <!-- Error Banner -->
@@ -107,20 +138,38 @@
       <!-- Primary Match Hero Card -->
       <div class="card hero-card">
         <div class="hero-header">
-          <span class="hero-kicker">Primary Stylistic Match</span>
-          <span class="games-badge" id="hero-games-badge">1 Game Analyzed</span>
+          <div>
+            <span class="hero-kicker">Primary Stylistic Match</span>
+            <span class="games-badge" id="hero-games-badge">1 Game Analyzed</span>
+          </div>
+          <button type="button" class="btn btn-ghost share-btn" id="share-card-btn" title="Download High-Res Social Card">
+            <span>📷 Save Match Card</span>
+          </button>
         </div>
         
-        <div class="hero-body">
-          <div class="hero-avatar" id="hero-avatar">♚</div>
-          <div class="hero-info">
-            <h2 class="hero-name" id="hero-name">Grandmaster</h2>
-            <div class="hero-archetype" id="hero-archetype">Attacking Firebrand</div>
-            <p class="hero-description" id="hero-description">Dynamic initiative and tactical clarity.</p>
+        <div class="hero-main-flex">
+          <div class="hero-body">
+            <div class="hero-avatar" id="hero-avatar">♚</div>
+            <div class="hero-info">
+              <h2 class="hero-name" id="hero-name">Grandmaster</h2>
+              <div class="hero-archetype" id="hero-archetype">Attacking Firebrand</div>
+              <p class="hero-description" id="hero-description">Dynamic initiative and tactical clarity.</p>
+            </div>
+            <div class="hero-stat">
+              <div class="stat-value" id="hero-similarity">95.3%</div>
+              <div class="stat-label">Alignment Index</div>
+            </div>
           </div>
-          <div class="hero-stat">
-            <div class="stat-value" id="hero-similarity">95.3%</div>
-            <div class="stat-label">Alignment Index</div>
+
+          <!-- Mini Board (Final Position) Panel -->
+          <div class="hero-board-panel">
+            <div class="board-panel-header">
+              <span class="board-panel-title" id="board-panel-title">Final Position (Game #1)</span>
+              <span class="board-pov-badge" id="board-pov-badge">POV: White</span>
+            </div>
+            <div class="mini-board-frame" id="mini-board-frame">
+              <!-- Injected SVG board -->
+            </div>
           </div>
         </div>
       </div>
@@ -183,6 +232,34 @@
         </div>
       </div>
 
+      <!-- Analyzed Games Ledger Card -->
+      <div class="card games-ledger-card hidden" id="games-ledger-card">
+        <div class="table-header-flex">
+          <div>
+            <h3 class="card-title">Analyzed Games Ledger</h3>
+            <p class="card-subtitle" id="games-ledger-subtitle">Click "Inspect" on any game to view its final board position above</p>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="gm-table games-ledger-table">
+            <thead>
+              <tr>
+                <th>Game</th>
+                <th>White</th>
+                <th>Black</th>
+                <th>Result</th>
+                <th>POV</th>
+                <th>Plies</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="games-ledger-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Full 22 Grandmaster Table -->
       <div class="card full-table-card">
         <div class="table-header-flex">
@@ -211,6 +288,7 @@
         </div>
       </div>
 
+      <canvas id="share-canvas" width="1200" height="630" style="display: none;"></canvas>
     </section>
   </main>
 

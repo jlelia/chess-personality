@@ -776,6 +776,233 @@ textarea#pgn-text-input:focus {
   font-size: 11px;
 }
 
+/* Online Import Box */
+.online-box {
+  background: rgba(11, 15, 23, 0.6);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 22px 20px;
+}
+
+.platform-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.platform-btn-group {
+  display: inline-flex;
+  background: rgba(8, 12, 18, 0.9);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  padding: 3px;
+  gap: 4px;
+}
+
+.plat-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.plat-btn:hover {
+  color: var(--text-main);
+}
+
+.plat-btn.active {
+  background: var(--card-bg);
+  color: var(--gold-light);
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.online-inputs-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.online-field-group {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.online-field-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.online-field-group input,
+.online-select {
+  background: rgba(11, 15, 23, 0.7);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--text-main);
+  font-size: 14px;
+  outline: none;
+}
+
+.online-field-group input:focus,
+.online-select:focus {
+  border-color: var(--gold-primary);
+}
+
+.count-select-group {
+  max-width: 220px;
+}
+
+.online-feedback {
+  margin-top: 14px;
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+}
+
+.online-feedback.success {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--accent-green);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.online-feedback.error {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* Hero Layout & Mini Board */
+.hero-main-flex {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.hero-board-panel {
+  background: rgba(11, 15, 23, 0.85);
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+}
+
+.board-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+.board-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.board-pov-badge {
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: var(--text-muted);
+}
+
+.mini-board-frame {
+  width: 260px;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #2b2b2b;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.mini-board-frame svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.share-btn {
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold-light);
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.share-btn:hover {
+  background: var(--gold-primary);
+  color: #0b0f17;
+  transform: translateY(-1px);
+}
+
+/* Games Ledger Table */
+.games-ledger-table th {
+  font-size: 11px;
+}
+
+.games-ledger-table td strong.res-win {
+  color: var(--accent-green);
+}
+
+.games-ledger-table td strong.res-loss {
+  color: var(--danger);
+}
+
+.games-ledger-table td strong.res-draw {
+  color: var(--accent-cyan);
+}
+
+.inspect-btn {
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  color: var(--gold-light);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.inspect-btn:hover {
+  background: var(--gold-primary);
+  color: #0b0f17;
+}
+
 .hidden {
   display: none !important;
 }
+
