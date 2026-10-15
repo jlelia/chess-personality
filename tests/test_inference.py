@@ -67,3 +67,47 @@ def test_fetch_online_games_validation():
     with pytest.raises(ValueError, match="Unsupported platform"):
         fetch_online_games("unknown_plat", "magnus")
 
+def test_fetch_online_games_upstream_errors(monkeypatch):
+    import ssl
+    import urllib.error
+    from app.main import UpstreamFetchError, fetch_online_games
+
+    # UpstreamFetchError must stay a ValueError so broad handlers keep working.
+    assert issubclass(UpstreamFetchError, ValueError)
+
+    # TLS interception (DNS filter / proxy presenting the wrong certificate)
+    def fake_tls_error(req, timeout=10):
+        raise urllib.error.URLError(
+            ssl.SSLCertVerificationError(
+                1, "certificate verify failed: Hostname mismatch, certificate is not valid for 'api.chess.com'"
+            )
+        )
+
+    monkeypatch.setattr("app.main.urllib.request.urlopen", fake_tls_error)
+    with pytest.raises(UpstreamFetchError, match="TLS certificate verification failed"):
+        fetch_online_games("chesscom", "JamesElia")
+    with pytest.raises(UpstreamFetchError, match="DNS filter"):
+        fetch_online_games("lichess", "JamesElia")
+
+    # Plain unreachable upstream (connection refused / timeout)
+    def fake_unreachable(req, timeout=10):
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+
+    monkeypatch.setattr("app.main.urllib.request.urlopen", fake_unreachable)
+    with pytest.raises(UpstreamFetchError, match="Could not reach Chess.com"):
+        fetch_online_games("chesscom", "JamesElia")
+
+def test_fetch_online_games_user_errors_not_misclassified(monkeypatch):
+    import urllib.error
+    from app.main import fetch_online_games
+
+    # HTTP 404 is a user-input problem (unknown username), not an upstream outage.
+    def fake_404(req, timeout=10):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr("app.main.urllib.request.urlopen", fake_404)
+    with pytest.raises(ValueError, match="not found"):
+        fetch_online_games("chesscom", "NoSuchUserHere")
+    with pytest.raises(ValueError, match="not found"):
+        fetch_online_games("lichess", "NoSuchUserHere")
+

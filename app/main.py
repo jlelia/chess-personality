@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import ssl
 import hashlib
 import urllib.request
 import urllib.error
@@ -112,6 +113,33 @@ async def get_grandmasters():
         })
     return {"grandmasters": result}
 
+class UpstreamFetchError(ValueError):
+    """The upstream provider could not be reached (network/DNS/TLS failure).
+    Subclasses ValueError so existing handlers keep working, but lets the API
+    distinguish upstream outages (502) from invalid user input (400)."""
+
+def _network_error_detail(provider: str, host: str, exc: Exception) -> str:
+    """Translates low-level network exceptions into actionable user-facing text."""
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
+        hint = ""
+        if proxy:
+            hint = f" An HTTPS proxy is configured for this server ({proxy}); if it performs TLS interception, exclude {host}."
+        return (
+            f"TLS certificate verification failed while contacting {provider}: the certificate presented is not valid "
+            f"for {host}. Something on the server's network is intercepting HTTPS — most commonly a DNS filter "
+            f"(e.g. Pi-hole blocking the domain), a proxy, a VPN, or an ISP redirect. This is a server-side network "
+            f"issue, not a browser problem. Check the DNS/proxy configuration of the machine running this app."
+            f"{hint}"
+        )
+    if isinstance(exc, urllib.error.URLError):
+        return (
+            f"Could not reach {provider} ({reason}). The machine running this app may be offline, firewalled, "
+            f"or have DNS problems."
+        )
+    return f"Failed to fetch games from {provider}: {exc}"
+
 def fetch_online_games(platform: str, username: str, max_games: int = 10) -> str:
     """Fetches recent games in PGN format from public Lichess or Chess.com APIs."""
     clean_user = username.strip()
@@ -137,9 +165,11 @@ def fetch_online_games(platform: str, username: str, max_games: int = 10) -> str
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise ValueError(f"Lichess user '{clean_user}' not found.")
-            raise ValueError(f"Lichess API returned status {e.code}: {e.reason}")
+            raise UpstreamFetchError(f"Lichess API returned status {e.code}: {e.reason}")
+        except ValueError:
+            raise
         except Exception as e:
-            raise ValueError(f"Failed to fetch games from Lichess: {str(e)}")
+            raise UpstreamFetchError(_network_error_detail("Lichess", "lichess.org", e))
 
     elif plat in ("chesscom", "chess.com"):
         url = f"https://api.chess.com/pub/player/{clean_user.lower()}/games/archives"
@@ -170,9 +200,11 @@ def fetch_online_games(platform: str, username: str, max_games: int = 10) -> str
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise ValueError(f"Chess.com user '{clean_user}' not found.")
-            raise ValueError(f"Chess.com API returned status {e.code}: {e.reason}")
+            raise UpstreamFetchError(f"Chess.com API returned status {e.code}: {e.reason}")
+        except ValueError:
+            raise
         except Exception as e:
-            raise ValueError(f"Failed to fetch games from Chess.com: {str(e)}")
+            raise UpstreamFetchError(_network_error_detail("Chess.com", "api.chess.com", e))
     else:
         raise ValueError(f"Unsupported platform '{platform}'. Please choose 'lichess' or 'chesscom'.")
 
@@ -188,6 +220,9 @@ def api_fetch_games(platform: str = "lichess", username: str = "", max_games: in
             "username": username,
             "pgn_text": pgn_text
         }
+    except UpstreamFetchError as e:
+        # Upstream unreachable/TLS failure — the client's request was valid.
+        raise HTTPException(status_code=502, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
